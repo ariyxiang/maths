@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Buku — Tampilan Responsif</title>
+  <style>
+    :root{
+      --bg:#efe8dd;
+      --paper:#fffdf8;
+      --accent:#8b5e3c;
+      --shadow: rgba(0,0,0,0.12);
+      --max-width:1200px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      background: linear-gradient(180deg,var(--bg), #efe6dc 40%);
+      display:flex; align-items:center; justify-content:center; min-height:100vh; padding:24px;
+      color:#222;
+    }
+
+    .scene{width:100%; max-width:var(--max-width);}
+
+    /* Book wrapper */
+    .book{
+      margin:0 auto; position:relative; perspective:1500px; transform-style:preserve-3d;
+    }
+
+    /* Page spread layout */
+    .spread{
+      display:flex; gap:24px; align-items:stretch; justify-content:center;
+      transition:all .35s ease;
+    }
+
+    .page{
+      width:48%; background:var(--paper); padding:36px 28px; border-radius:10px; box-shadow: 0 10px 30px var(--shadow);
+      min-height:420px; position:relative; overflow:hidden; border:1px solid rgba(0,0,0,0.04);
+      transform-origin:center left;
+    }
+
+    /* Single page mode for small screens */
+    @media (max-width:800px){
+      .spread{flex-direction:column; gap:16px}
+      .page{width:100%; padding:28px}
+    }
+
+    /* Page header (like chapter title) */
+    .page h2{margin:0 0 12px; color:var(--accent); font-size:1.25rem}
+    .page .meta{font-size:0.85rem; color:#666; margin-bottom:14px}
+    .page p{line-height:1.68; margin:0 0 12px; font-size:1rem}
+
+    /* Page number */
+    .pagenum{position:absolute; bottom:12px; right:16px; font-size:.82rem; color:#8b8b8b}
+    .pagenum.left{left:16px; right:auto}
+
+    /* Controls */
+    .controls{display:flex; gap:12px; justify-content:center; margin-top:18px}
+    button.ctrl{background:var(--accent); color:white; border:none; padding:10px 14px; border-radius:8px; cursor:pointer; box-shadow:0 6px 14px rgba(139,94,60,0.18)}
+    button.ctrl[disabled]{opacity:.5; cursor:not-allowed}
+
+    /* Small decorative spine for large screens */
+    .spine{
+      display:none;
+    }
+    @media (min-width:801px){
+      .spine{display:block; width:36px; background:linear-gradient(180deg,#ecd9c8,#dfc7b1); border-radius:8px; box-shadow:0 6px 16px rgba(0,0,0,0.06);}
+    }
+
+    /* Page-turn visual (flipped pages) */
+    .page.flipped{transform: rotateY(-6deg) translateX(-6px); box-shadow: 0 18px 40px rgba(0,0,0,0.18)}
+
+    /* Accessibility */
+    .sr-only{position:absolute; left:-9999px}
+
+    /* Responsive typography */
+    @media (max-width:420px){
+      .page p{font-size:.95rem}
+      .page{padding:20px}
+    }
+  </style>
+</head>
+<body>
+  <div class="scene">
+    <div style="display:flex; gap:18px; align-items:center; justify-content:center; margin-bottom:16px;">
+      <h1 style="margin:0; font-size:1.4rem; color:var(--accent)">Contoh Buku — Cerita Pendek</h1>
+    </div>
+
+    <div class="book" id="bookRoot" aria-label="Buku interaktif">
+      <div class="spread" id="spread">
+        <div class="page" id="leftPage" aria-hidden="false">
+          <!-- left page content injected by JS -->
+        </div>
+        <div class="spine" aria-hidden="true" title="spine"></div>
+        <div class="page" id="rightPage" aria-hidden="false">
+          <!-- right page content injected by JS -->
+        </div>
+      </div>
+
+      <div class="controls" role="toolbar" aria-label="Kontrol halaman">
+        <button class="ctrl" id="prevBtn" aria-label="Halaman sebelumnya">Previous</button>
+        <button class="ctrl" id="nextBtn" aria-label="Halaman berikutnya">Next</button>
+      </div>
+
+    </div>
+
+  </div>
+
+  <script>
+    // Simple page data: array of page HTML strings
+    const pages = [
+      `<h2>Barisan Aritmatika</h2><div class="meta">oleh Penulis Contoh</div><p>Contoh:<br>3, 5, 7, 9, 11, 13<br>V1= 3 V2=5<br><br>Un= a+(n-1)b<br>b= V2 - V1<br>=5-3=2<br><br>Un= a+(n-1)b<br>U101= 3+(101-1)2<br>= 3+100.2<br>= 3+200<br>=203</p><div class="pagenum left">1</div>`,
+      `<h2>Deretan Aritmatika</h2><p>Rumus:<br>Sn= n/2(2a+(n-1)b)<div class="meta"><div class="pagenum">2</div>`,
+      `<h2>Barisan Geometri</h2><div class="meta">r= V2/V1<br>Un= ar n¹</div><div class="pagenum left">3</div>`,
+      `<h2>Deretan Geometri</h2><div class="meta">halaman demi halaman</div><p>Sn= a(r n-¹)/r-1<div class="pagenum">4</div>`,
+      ];
+
+    // State
+    let currentSpread = 0; // index of the left page in the 'pages' array when showing two-page spread
+
+    const leftPage = document.getElementById('leftPage');
+    const rightPage = document.getElementById('rightPage');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const spread = document.getElementById('spread');
+    const bookRoot = document.getElementById('bookRoot');
+
+    function render(){
+      const isSingle = window.matchMedia('(max-width:800px)').matches;
+      if(isSingle){
+        // single page: show only rightPage as current
+        const idx = currentSpread; // currentSpread points to single page index
+        leftPage.style.display = 'none';
+        rightPage.style.display = 'block';
+        rightPage.innerHTML = pages[idx] || '<p style="opacity:.6">Halaman kosong</p>';
+        rightPage.setAttribute('aria-hidden', !!pages[idx] ? 'false':'true');
+      } else {
+        // two-page spread: left = currentSpread, right = currentSpread+1
+        leftPage.style.display = 'block';
+        rightPage.style.display = 'block';
+        leftPage.innerHTML = pages[currentSpread] || '<p style="opacity:.6">Halaman kosong</p>';
+        rightPage.innerHTML = pages[currentSpread+1] || '<p style="opacity:.6">Halaman kosong</p>';
+        leftPage.setAttribute('aria-hidden', !!pages[currentSpread] ? 'false':'true');
+        rightPage.setAttribute('aria-hidden', !!pages[currentSpread+1] ? 'false':'true');
+      }
+
+      // update buttons
+      prevBtn.disabled = currentSpread <= 0;
+      // next disabled when no more pages
+      if(window.matchMedia('(max-width:800px)').matches){
+        nextBtn.disabled = currentSpread >= pages.length-1;
+      } else {
+        nextBtn.disabled = currentSpread >= pages.length-2;
+      }
+    }
+
+    // Navigation
+    function next(){
+      const isSingle = window.matchMedia('(max-width:800px)').matches;
+      if(isSingle){
+        if(currentSpread < pages.length-1) currentSpread +=1;
+      } else {
+        if(currentSpread < pages.length-2) currentSpread +=2;
+      }
+      render();
+    }
+    function prev(){
+      const isSingle = window.matchMedia('(max-width:800px)').matches;
+      if(isSingle){
+        if(currentSpread > 0) currentSpread -=1;
+      } else {
+        if(currentSpread > 1) currentSpread -=2; else currentSpread = 0;
+      }
+      render();
+    }
+
+    prevBtn.addEventListener('click', ()=>{ prev(); });
+    nextBtn.addEventListener('click', ()=>{ next(); });
+
+    // Keyboard
+    document.addEventListener('keydown', (e)=>{
+      if(e.key === 'ArrowRight') next();
+      if(e.key === 'ArrowLeft') prev();
+    });
+
+    // Touch swipe for mobile
+    let touchStartX = null;
+    spread.addEventListener('touchstart', (e)=>{ touchStartX = e.changedTouches[0].screenX; });
+    spread.addEventListener('touchend', (e)=>{
+      if(touchStartX === null) return;
+      const dx = e.changedTouches[0].screenX - touchStartX;
+      if(dx < -40) next();
+      if(dx > 40) prev();
+      touchStartX = null;
+    });
+
+    // Re-render on resize to switch single/double layout properly
+    window.addEventListener('resize', ()=>{
+      // keep current page roughly the same content when switching modes
+      render();
+    });
+
+    // Initial render
+    render();
+
+    // Optional: expose API to add pages programmatically
+    window.BookAPI = {
+      addPage(html){ pages.push(html); render(); },
+      gotoPage(index){ if(typeof index === 'number' && index >=0 && index < pages.length){ currentSpread = index; render(); } }
+    }
+  </script>
+</body>
+</html>
